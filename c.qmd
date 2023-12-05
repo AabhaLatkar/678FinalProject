@@ -58,12 +58,11 @@ transcript <- transcript[, -1]
 
 #merge the datasets together
 #we can merge transcript and portfolio by id and proile and transcript by person
-data <- merge(profile, transcript, by = "person", all.x = FALSE)
-data$new <- 1
-data <- as.data.frame(extract_data(data))
-data <- data() %>%
-  pivot_wider(names_from = event, values_from = new)
-starbucks <- merge(data, portfolio, by = "id", all.x = TRUE)
+data1 <- merge(profile, transcript, by = "person", all.x = FALSE)
+data1$new <- 1
+data1 <- data1 %>%
+  pivot_wider(names_from = event, values_from = new, values_fn = list)
+starbucks <- merge(data1, portfolio, by = "id", all.x = TRUE)
 
 
 ```
