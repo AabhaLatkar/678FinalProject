@@ -1,0 +1,88 @@
+---
+title: "678 Project"
+author: "Aabha Latkar"
+format: html
+editor: visual
+---
+
+## Starbucks! Introduction to the Dataset
+
+Starbucks <https://quarto.org>.
+
+## Objectives and Methods
+
+When you click the **Render** 
+
+## Data Wrangling
+
+```{r}
+#First we will load the data and the libraries
+library(tidyr)
+library(readr)
+library(lubridate)
+library(stringr)
+library(reshape2)
+library(ggplot2)
+library(dplyr)
+portfolio <- read_csv("portfolio.csv", show_col_types = FALSE)
+profile <- read_csv("profile.csv", show_col_types = FALSE)
+transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
+```
+
+```{r}
+#Get the data description and see if there are any missing values for each of the 3 dataset
+
+#profile
+summary(profile)
+#we can see that there are a lot of missing values in the income variable and there is 
+#one incorrect observation- age 118. We can fix that. We will also have to seperate the "became member on" column into year, month and day to get the duration of the customer's membership. 
+profile <- na.omit(profile)
+
+profile <- subset(profile, age != 118)
+profile <- subset(profile, age !=101)
+
+profile$became_member_on <- ymd(profile$became_member_on)
+profile$months_as_member <- as.numeric(difftime(Sys.Date(), profile$became_member_on, units = "weeks"))
+profile$months_as_member <- round(profile$months_as_member)
+
+colnames(profile)[colnames(profile) == "id"] <- "person"
+profile <- profile[, -1]
+
+#portfolio
+summary(portfolio)
+portfolio <- portfolio[, -1]
+
+#transcript
+summary(transcript)
+transcript <- transcript[, -1]
+
+#merge the datasets together
+#we can merge transcript and portfolio by id and proile and transcript by person
+data <- merge(profile, transcript, by = "person", all.x = FALSE)
+data$new <- 1
+data <- as.data.frame(extract_data(data))
+data <- data() %>%
+  pivot_wider(names_from = event, values_from = new)
+starbucks <- merge(data, portfolio, by = "id", all.x = TRUE)
+
+
+```
+
+##EDA
+```{r}
+#correlation analysis
+numeric_columns <- sapply(starbucks, is.numeric)
+
+# Filter only numeric columns
+numeric_starbucks <- starbucks[, numeric_columns]
+
+# Calculate correlation matrix
+cormat <- round(cor(numeric_starbucks), 2)
+head(cormat)
+
+melted_cormat <- melt(cormat)
+ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
