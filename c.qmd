@@ -6,6 +6,7 @@ editor: visual
 ---
 
 ## Starbucks! Introduction to the Dataset
+# we can see that only 26% of the offers in our random sample were completed. Sending the offers requires money and if we can predict beforehand if a customer will complete the offer, we can save money on advertising and take business decisions accordingly.
 
 Starbucks <https://quarto.org>.
 
@@ -26,6 +27,7 @@ library(ggplot2)
 library(lme4)
 library(dplyr)
 library(caret)
+
 
 portfolio <- read_csv("portfolio.csv", show_col_types = FALSE)
 profile <- read_csv("profile.csv", show_col_types = FALSE)
@@ -81,6 +83,7 @@ starbucks$member_year <- year(starbucks$became_member_on)
 starbucks <- starbucks %>% select(-became_member_on)
 starbucks$`offer completed` <- gsub("NULL", "0", starbucks$`offer completed`)
 starbucks<- starbucks[starbucks$`offer completed` %in% c(0, 1), ]
+starbucks$`offer completed` <- as.numeric(starbucks$`offer completed`)
 starbucks <- starbucks %>%
                     group_by(person) %>%
                     sample_n(size = 1) %>%
@@ -106,7 +109,7 @@ melted_cormat <- melt(cormat)
 ggplot(data = melted_cormat, aes(Var1, Var2, fill = value)) +   geom_tile() +   geom_text(aes(label = round(value, 2)), color = "black") +     scale_fill_gradient(low = "blue", high = "red") +   labs(title = "College Correlation Heatmap", x = "Variables", y = "Variables") +   theme(axis.text.x = element_text(angle = 45, hjust = 1))  
 
 #seeing how the offers completed vary across offer types
-starbucks$`offer completed` <- as.numeric(starbucks$`offer completed`)
+
 starbucks <- na.omit(starbucks)
 proportion_data <- starbucks %>%
   group_by(id) %>%
@@ -117,6 +120,10 @@ ggplot(proportion_data1, aes(x = as.factor(id), y = proportion))+
   geom_bar(stat="identity") +
   labs(title = "Proportion of Offer Completion by ID", x = "ID", y = "Proportion of Offer Completion") + theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "blue"))
 
+#How many offer completed?
+ggplot(starbucks)+
+geom_bar()+
+aes(x=`offer completed`)
 
 #Seeing how the offers completed varies across people.
 proportion_data2 <- starbucks %>%
@@ -127,27 +134,67 @@ proportion_data3 <- proportion_data2 %>%
 
 hist(proportion_data3$count)
 
-starbucks1 <- starbucks[starbucks$`offer completed` == 1, ]
-hist(starbucks1$age)
-hist(starbucks1$income)
-hist(starbucks1$weeks_as_member)
+starbucks%>%
+summarise(completed =mean(`offer completed`))
+starbucks%>%
+group_by(gender)%>%
+summarise(completed1=mean(
+`offer completed`))
+ggplot(starbucks)+
+geom_bar()+
+aes(x=`offer completed`)
+
+ggplot(starbucks %>% filter(gender == "gender")) +
+  geom_bar(aes(x = `offer completed`))
+
+ggplot(starbucks, aes(x = gender, fill = `offer completed`)) +
+  geom_bar() +
+  labs(x = "Offer Completed", y = "Count") +
+  scale_fill_manual(values = c("0" = "red", "1" = "pink")) +
+  theme_minimal()
+
+ggplot(starbucks, aes(x = factor(gender), fill = factor(`offer completed`))) +
+  geom_bar(position = "stack") +
+  labs(x = "Gender", y = "Count") +
+  scale_fill_manual(values = c("0" = "red", "1" = "green")) +
+  theme_minimal()
+
+percentage_data <- starbucks %>%
+  group_by(gender, `offer completed`) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+ggplot(percentage_data, aes(x = factor(gender), y = percentage, fill = factor(`offer completed`))) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(x = "Gender", y = "Percentage") +
+  scale_fill_manual(values = c("0" = "red", "1" = "green")) +
+  theme_minimal()
 ```
 
 ```{r}
-offer_completed_counts <- starbucks %>%
-  group_by(`offer completed`) %>%
-  summarise(count = n())
+set.seed(123)
+
+# Assuming 'data' is your dataset
+# 80% of the data will be used for training
+index <- createDataPartition(starbucks$`offer completed`, p = 0.8, list = FALSE)
+
+# Create training and test sets
+starbucks_train <- starbucks[index, ]
+starbucks_test  <- starbucks[-index, ]
 ```
 
 
 ##Modelling!
 ```{r}
 #The null model
-null_model <- glm(`offer completed`~ 1, data= starbucks, family= "binomial")
+null_model <- glm(`offer completed`~ 1, data= starbucks_train, family= "binomial")
 summary(null_model)
 
 #The normal model
-logistic_model <- glm(`offer completed`~ gender+ age+ income+ weeks_as_member, data= starbucks, family= "binomial")
+logistic_model <- glm(`offer completed`~ income, data= starbucks_train, family= "binomial")
+summary(logistic_model)
+
+logistic_model <- glm(`offer completed`~ gender+ age+ income+ weeks_as_member, data= starbucks_train, family= "binomial")
 summary(logistic_model)
 
 #The normal model 2
@@ -155,23 +202,45 @@ logistic_model2 <- glm(`offer completed`~ difficulty+ offer_type+reward, data= s
 summary(logistic_model2)
 
 #no pooling
-no_pool_model <- glmer(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | id),
+no_pool_model <- glm(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | id),
                         family = binomial,
                         data = starbucks)
 
 ```
 
 ```{r}
+#missclassification error
+ 
+predicted_probabilities <- predict(your_model, newdata = your_data, type = "response")
+predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
 
+# Assuming 'response_variable' is the actual binary response variable in your dataset
+actual_classes <- your_data$response_variable
+
+# Calculate misclassification error
+misclassification_error <- mean(predicted_classes != actual_classes)
+
+print(paste("Misclassification Error:", misclassification_error))
 
 ```
-
-
-
 
 ```{r}
-person_counts <- as.data.frame(table(starbucks$person))
-filtered_starbucks <- starbucks %>%
-  filter(person %in% person_counts$person[person_counts$Freq == 1])
+naive_predictor <- rep(0, nrow(starbucks_test))
+
+# Evaluate the naive predictor on the test set
+naive_predictor <- factor(naive_predictor, levels = levels(starbucks_test$`offer completed`))
+accuracy <- confusionMatrix(naive_predictor, starbucks_test$`offer completed`) %>% 
+  extract("overall") %>% 
+  extract("Accuracy")
+
+f1_score <- confusionMatrix(naive_predictor, starbucks_test$`offer completed`) %>% 
+  extract("byClass") %>% 
+  extract("F1")
+
+cat("Accuracy on Test Set:", accuracy, "\n")
+cat("F1 Score on Test Set:", f1_score, "\n")
 ```
+
+
+
 The `echo: false` option disables the printing of code (only output is displayed).
