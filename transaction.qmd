@@ -1,0 +1,91 @@
+---
+title: "Transaction"
+author: "Aabha Latkar"
+format: html
+editor: visual
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+```{r}
+#First we will load the data and the libraries
+library(tidyr)
+library(readr)
+library(lubridate)
+library(stringr)
+library(reshape2)
+library(ggplot2)
+library(lme4)
+library(dplyr)
+portfolio <- read_csv("portfolio.csv", show_col_types = FALSE)
+profile <- read_csv("profile.csv", show_col_types = FALSE)
+transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
+```
+
+You can add options to executable code like this
+
+```{r}
+profile <- na.omit(profile)
+
+profile <- subset(profile, age != 118)
+profile <- subset(profile, age !=101)
+
+profile$became_member_on <- ymd(profile$became_member_on)
+profile$weeks_as_member <- as.numeric(difftime(Sys.Date(), profile$became_member_on, units = "weeks"))
+profile$weeks_as_member <- round(profile$weeks_as_member)
+
+colnames(profile)[colnames(profile) == "id"] <- "person"
+profile <- profile[, -1]
+
+#portfolio
+#summary(portfolio)
+portfolio <- portfolio[, -1]
+
+#transcript
+#summary(transcript)
+transcript <- transcript[, -1]
+
+#merge the datasets together
+#we can merge transcript and portfolio by id and proile and transcript by person
+datat <- merge(profile, transcript, by = "person", all.x = FALSE)
+datat$new <- 1
+datat <- datat %>%
+  pivot_wider(names_from = event, values_from = new, values_fn = list)
+datat <- datat %>% filter(transaction == "1")
+starbuckst <- datat %>% select(gender, age, income, weeks_as_member, became_member_on, `transaction amount`, person)
+starbuckst1 <- starbuckst %>%
+  group_by(person) %>%   
+  summarise(amt = mean(`transaction amount`), .groups = 'keep')
+starbucksta<- starbuckst %>%
+  group_by(person) %>%   
+  summarise(count= count(person), .groups = 'keep')
+starbuckst2 <- merge(starbuckst1, starbuckst, by = "person", all.x = TRUE)
+starbuckst2 <- starbuckst2 %>% select(-`transaction amount`)
+starbuckst2 <- unique(starbuckst2)
+```
+
+```{r}
+#EDA
+as.numeric(starbuckst2$age)
+hist(starbuckst2$age)
+hist(starbuckst2$income)
+numeric_columns1 <- sapply(starbuckst2, is.numeric)
+numeric_starbuckst1 <- starbuckst2[, numeric_columns1]
+cormat1 <- round(cor(numeric_starbuckst1), 2)
+#head(cormat)
+melted_cormat1 <- melt(cormat1)
+ggplot(data = melted_cormat1, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile()
+```
+```{r}
+#the null model
+null_modelt <- lm(amt~ 1, data= starbuckst2)
+summary(null_modelt)
+
+```
+
+The `echo: false` option disables the printing of code (only output is displayed).
