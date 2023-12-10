@@ -23,7 +23,10 @@ library(lubridate)
 library(stringr)
 library(reshape2)
 library(ggplot2)
+library(lme4)
 library(dplyr)
+library(caret)
+
 portfolio <- read_csv("portfolio.csv", show_col_types = FALSE)
 profile <- read_csv("profile.csv", show_col_types = FALSE)
 transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
@@ -33,7 +36,7 @@ transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
 #Get the data description and see if there are any missing values for each of the 3 dataset
 
 #profile
-summary(profile)
+#summary(profile)
 #we can see that there are a lot of missing values in the income variable and there is 
 #one incorrect observation- age 118. We can fix that. We will also have to seperate the "became member on" column into year, month and day to get the duration of the customer's membership. 
 profile <- na.omit(profile)
@@ -42,20 +45,20 @@ profile <- subset(profile, age != 118)
 profile <- subset(profile, age !=101)
 
 profile$became_member_on <- ymd(profile$became_member_on)
-profile$months_as_member <- as.numeric(difftime(Sys.Date(), profile$became_member_on, units = "weeks"))
-profile$months_as_member <- round(profile$months_as_member)
+profile$weeks_as_member <- as.numeric(difftime(Sys.Date(), profile$became_member_on, units = "weeks"))
+profile$weeks_as_member <- round(profile$weeks_as_member)
 
 colnames(profile)[colnames(profile) == "id"] <- "person"
 profile <- profile[, -1]
 
 #portfolio
-summary(portfolio)
+#summary(portfolio)
 portfolio <- portfolio[, -1]
 
 #transcript
-summary(transcript)
+#summary(transcript)
 transcript <- transcript[, -1]
-
+transcript <- transcript %>% select(-reward)
 #merge the datasets together
 #we can merge transcript and portfolio by id and proile and transcript by person
 data1 <- merge(profile, transcript, by = "person", all.x = FALSE)
@@ -63,25 +66,112 @@ data1$new <- 1
 data1 <- data1 %>%
   pivot_wider(names_from = event, values_from = new, values_fn = list)
 starbucks <- merge(data1, portfolio, by = "id", all.x = TRUE)
-
-
+starbucks <- starbucks %>%
+  select( -10, -11)
+starbucks[is.na(starbucks)] <- 0
+income_brackets <- cut(starbucks$income, breaks = c(30000, 50000, 70000, 90000, 110000, 120000),
+                       labels = c("30k-50k", "50k-70k", "70k-90k", "90k-110k", "110k-120k"),
+                       include.lowest = TRUE)
+#starbucks$income_bracket <- income_brackets
+starbucks <- starbucks %>% filter(transaction != "1")
+starbucks <- starbucks %>% select(-transaction, -`transaction amount`, -`offer viewed`, -`offer received`, -time)
+starbucks$`offer completed`[is.null(starbucks$`offer completed`)] <- 0
+starbucks$became_member_on <- as.Date(starbucks$became_member_on, format = "%Y%m%d")
+starbucks$member_year <- year(starbucks$became_member_on)
+starbucks <- starbucks %>% select(-became_member_on)
+starbucks$`offer completed` <- gsub("NULL", "0", starbucks$`offer completed`)
+starbucks<- starbucks[starbucks$`offer completed` %in% c(0, 1), ]
+starbucks <- starbucks %>%
+                    group_by(person) %>%
+                    sample_n(size = 1) %>%
+                    ungroup()
+ids_without_offer_completed <- starbucks %>%
+  group_by(id) %>%
+  summarise(has_offer_completed = any(`offer completed` == 1)) %>%
+  filter(!has_offer_completed) %>%
+  pull(id)
+starbucks <- starbucks %>%
+  filter(!(id %in% ids_without_offer_completed))
 ```
 
 ##EDA
 ```{r}
 #correlation analysis
 numeric_columns <- sapply(starbucks, is.numeric)
-
-# Filter only numeric columns
 numeric_starbucks <- starbucks[, numeric_columns]
-
-# Calculate correlation matrix
 cormat <- round(cor(numeric_starbucks), 2)
-head(cormat)
-
+#head(cormat)
 melted_cormat <- melt(cormat)
-ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-  geom_tile()
+
+ggplot(data = melted_cormat, aes(Var1, Var2, fill = value)) +   geom_tile() +   geom_text(aes(label = round(value, 2)), color = "black") +     scale_fill_gradient(low = "blue", high = "red") +   labs(title = "College Correlation Heatmap", x = "Variables", y = "Variables") +   theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+#seeing how the offers completed vary across offer types
+starbucks$`offer completed` <- as.numeric(starbucks$`offer completed`)
+starbucks <- na.omit(starbucks)
+proportion_data <- starbucks %>%
+  group_by(id) %>%
+  summarise(count = sum(`offer completed`==1))
+proportion_data1 <- proportion_data %>%mutate(proportion= count/sum(count))
+
+ggplot(proportion_data1, aes(x = as.factor(id), y = proportion))+
+  geom_bar(stat="identity") +
+  labs(title = "Proportion of Offer Completion by ID", x = "ID", y = "Proportion of Offer Completion") + theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "blue"))
+
+
+#Seeing how the offers completed varies across people.
+proportion_data2 <- starbucks %>%
+  group_by(person) %>%   
+  summarise(count = sum(`offer completed` == 1))
+proportion_data3 <- proportion_data2 %>%
+  mutate(proportion = count / sum(count))
+
+hist(proportion_data3$count)
+
+starbucks1 <- starbucks[starbucks$`offer completed` == 1, ]
+hist(starbucks1$age)
+hist(starbucks1$income)
+hist(starbucks1$weeks_as_member)
 ```
 
+```{r}
+offer_completed_counts <- starbucks %>%
+  group_by(`offer completed`) %>%
+  summarise(count = n())
+```
+
+
+##Modelling!
+```{r}
+#The null model
+null_model <- glm(`offer completed`~ 1, data= starbucks, family= "binomial")
+summary(null_model)
+
+#The normal model
+logistic_model <- glm(`offer completed`~ gender+ age+ income+ weeks_as_member, data= starbucks, family= "binomial")
+summary(logistic_model)
+
+#The normal model 2
+logistic_model2 <- glm(`offer completed`~ difficulty+ offer_type+reward, data= starbucks, family= "binomial")
+summary(logistic_model2)
+
+#no pooling
+no_pool_model <- glmer(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | id),
+                        family = binomial,
+                        data = starbucks)
+
+```
+
+```{r}
+
+
+```
+
+
+
+
+```{r}
+person_counts <- as.data.frame(table(starbucks$person))
+filtered_starbucks <- starbucks %>%
+  filter(person %in% person_counts$person[person_counts$Freq == 1])
+```
 The `echo: false` option disables the printing of code (only output is displayed).
