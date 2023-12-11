@@ -28,6 +28,7 @@ library(lme4)
 library(dplyr)
 library(caret)
 library(ROSE)
+library(tibble)
 
 portfolio <- read_csv("portfolio.csv", show_col_types = FALSE)
 profile <- read_csv("profile.csv", show_col_types = FALSE)
@@ -118,7 +119,7 @@ ggplot(data = melted_cormat, aes(Var1, Var2, fill = value)) +   geom_tile() +   
 starbucks <- na.omit(starbucks)
 proportion_data <- starbucks %>%
   group_by(id) %>%
-  summarise(count = sum(`offer completed`==1))
+  summarise(count = sum(completed))
 proportion_data1 <- proportion_data %>%mutate(proportion= count/sum(count))
 
 ggplot(proportion_data1, aes(x = as.factor(id), y = proportion))+
@@ -227,6 +228,27 @@ summary(partial_pool_model)
 
 #complete pooling
 cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+id, data = starbucks_train, family = "binomial")
+
+#no pooling
+fit_mixed_model <- function(starbucks_train, formula) {
+  # Group the data by ID
+  grouped_data <- split(starbucks_train, starbucks_train$id)
+  
+  # Fit a mixed-effects model for each group
+  models <- lapply(grouped_data, function(group) {
+    lmer(formula, data = group)
+  })
+  
+  return(models)
+}
+fit_mixed_model(starbucks_train, formula)
+# Example usage:
+# Assuming 'starbucks_data' is your dataset and 'completed' is the binary outcome variable
+# You can modify the formula based on your specific predictors
+formula <- completed ~ income + age + gender + (1 | id)
+models_by_id <- fit_mixed_model(starbucks_train, formula)
+id_counts <- table(starbucks_train$id)
+
 ```
 
 
@@ -243,6 +265,49 @@ misclassification_error <- mean(predicted_classes != actual_classes)
 print(paste("Misclassification Error:", misclassification_error))
 
 ```
+```{r}
+model_list <- list(null_model, try1)
+```
+
+```{r}
+library(tibble)
+
+calculate_misclassification_errors <- function(model_list, starbucks_test) {
+  # Initialize an empty list to store results
+  results <- list()
+
+  # Loop through each model
+  for (i in seq_along(model_list)) {
+    # Get the model
+    model <- model_list[[i]]
+
+    # Get the model name
+    model_name <- names(model_list)[i]
+
+    # Predict probabilities
+    predicted_probabilities <- predict(model, newdata = starbucks_test, type = "response")
+
+    # Convert probabilities to binary classes
+    predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+
+    # Get actual classes from test data
+    actual_classes <- starbucks_test$completed
+
+    # Calculate misclassification error
+    misclassification_error <- mean(predicted_classes != actual_classes)
+
+    # Store results in a list
+    results[[i]] <- tibble(Model = model_name, Misclassification_Error = misclassification_error)
+  }
+
+  # Combine results into a single data frame
+  result_table <- do.call(rbind, results)
+
+  return(result_table)
+}
+
+```
+
 
 
 
