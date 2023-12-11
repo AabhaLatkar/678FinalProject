@@ -74,7 +74,7 @@ starbucks[is.na(starbucks)] <- 0
 income_brackets <- cut(starbucks$income, breaks = c(30000, 50000, 70000, 90000, 110000, 120000),
                        labels = c("30k-50k", "50k-70k", "70k-90k", "90k-110k", "110k-120k"),
                        include.lowest = TRUE)
-#starbucks$income_bracket <- income_brackets
+starbucks$income_bracket <- income_brackets
 starbucks <- starbucks %>% filter(transaction != "1")
 starbucks <- starbucks %>% select(-transaction, -`transaction amount`, -`offer viewed`, -`offer received`, -time)
 starbucks$`offer completed`[is.null(starbucks$`offer completed`)] <- 0
@@ -95,6 +95,8 @@ ids_without_offer_completed <- starbucks %>%
   pull(id)
 starbucks <- starbucks %>%
   filter(!(id %in% ids_without_offer_completed))
+standardized_data <- scale(starbucks$income)
+
 ```
 
 ##EDA
@@ -118,7 +120,7 @@ proportion_data1 <- proportion_data %>%mutate(proportion= count/sum(count))
 
 ggplot(proportion_data1, aes(x = as.factor(id), y = proportion))+
   geom_bar(stat="identity") +
-  labs(title = "Proportion of Offer Completion by ID", x = "ID", y = "Proportion of Offer Completion") + theme(axis.text.x = element_text(angle = 45, hjust = 1, color = "blue"))
+  labs(title = "Proportion of Offer Completion by ID", x = "ID", y = "Proportion of Offer Completion") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 #How many offer completed?
 ggplot(starbucks)+
@@ -167,7 +169,7 @@ percentage_data <- starbucks %>%
 ggplot(percentage_data, aes(x = factor(gender), y = percentage, fill = factor(`offer completed`))) +
   geom_bar(stat = "identity", position = "fill") +
   labs(x = "Gender", y = "Percentage") +
-  scale_fill_manual(values = c("0" = "red", "1" = "green")) +
+  scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
   theme_minimal()
 ```
 
@@ -191,31 +193,49 @@ null_model <- glm(`offer completed`~ 1, data= starbucks_train, family= "binomial
 summary(null_model)
 
 #The normal model
-logistic_model <- glm(`offer completed`~ income, data= starbucks_train, family= "binomial")
-summary(logistic_model)
-
-logistic_model <- glm(`offer completed`~ gender+ age+ income+ weeks_as_member, data= starbucks_train, family= "binomial")
+logistic_model <- glm(`offer completed`~ income+age+gender+weeks_as_member+difficulty+reward+offer_type, data= starbucks_train, family= "binomial")
 summary(logistic_model)
 
 #The normal model 2
-logistic_model2 <- glm(`offer completed`~ difficulty+ offer_type+reward, data= starbucks, family= "binomial")
+logistic_model2 <- glm(`offer completed`~ difficulty + offer_type +reward, data= starbucks_train, family= "binomial")
 summary(logistic_model2)
 
 #no pooling
-no_pool_model <- glm(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | id),
+no_pool_model <- glm(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | difficulty),
                         family = binomial,
                         data = starbucks)
 
+try1 <- glm(`offer completed` ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
+hist(starbucks$income)
+
+starbucks$age <- scale(starbucks$age)
+starbucks$income <- scale(starbucks$income)
 ```
 
 ```{r}
-#missclassification error
+starbucsetes.factor(data$offer_completed)
+formula <- as.formula("`offer completed` ~ age + income + gender + weeks_as_member + difficulty + reward")                       
+
+# Create a data frame with the formula
+data_formula <- model.frame(formula, starbucks_train)
+
+# Perform undersampling using downSample
+undersampled_data <- downSample(data_formula, y = "`offer completed`")
+
+# Check the class distribution after undersampling
+table(undersampled_data$`offer completed`)
+
+```
+
+
+```{r}
+#misclassification error
  
-predicted_probabilities <- predict(your_model, newdata = your_data, type = "response")
+predicted_probabilities <- predict(try1, newdata = starbucks_test, type = "response")
 predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
 
 # Assuming 'response_variable' is the actual binary response variable in your dataset
-actual_classes <- your_data$response_variable
+actual_classes <- starbucks_test$`offer completed`
 
 # Calculate misclassification error
 misclassification_error <- mean(predicted_classes != actual_classes)
@@ -224,22 +244,6 @@ print(paste("Misclassification Error:", misclassification_error))
 
 ```
 
-```{r}
-naive_predictor <- rep(0, nrow(starbucks_test))
-
-# Evaluate the naive predictor on the test set
-naive_predictor <- factor(naive_predictor, levels = levels(starbucks_test$`offer completed`))
-accuracy <- confusionMatrix(naive_predictor, starbucks_test$`offer completed`) %>% 
-  extract("overall") %>% 
-  extract("Accuracy")
-
-f1_score <- confusionMatrix(naive_predictor, starbucks_test$`offer completed`) %>% 
-  extract("byClass") %>% 
-  extract("F1")
-
-cat("Accuracy on Test Set:", accuracy, "\n")
-cat("F1 Score on Test Set:", f1_score, "\n")
-```
 
 
 
