@@ -98,6 +98,7 @@ starbucks <- starbucks %>%
 starbucks$age <- scale(starbucks$age)
 starbucks$income <- scale(starbucks$income)
 starbucks$weeks_as_member <- scale(starbucks$weeks_as_member)
+factor(starbucks$`offer completed`)
 
 ```
 
@@ -203,7 +204,9 @@ logistic_model2 <- glm(`offer completed`~ difficulty + offer_type +reward, data=
 summary(logistic_model2)
 
 #no pooling
-partial_pool_model <- glmer(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | id),
+starbucks_train$`offer completed` <- factor(starbucks_train$`offer completed`)
+
+partial_pool_model <- glmer(formula = `offer completed`~ age + income + gender + weeks_as_member + (1 | id),
                         family = binomial,
                         data = starbucks_train)
 summary(no_pool_model)
