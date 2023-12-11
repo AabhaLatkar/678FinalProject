@@ -27,7 +27,7 @@ library(ggplot2)
 library(lme4)
 library(dplyr)
 library(caret)
-
+library(ROSE)
 
 portfolio <- read_csv("portfolio.csv", show_col_types = FALSE)
 profile <- read_csv("profile.csv", show_col_types = FALSE)
@@ -95,7 +95,9 @@ ids_without_offer_completed <- starbucks %>%
   pull(id)
 starbucks <- starbucks %>%
   filter(!(id %in% ids_without_offer_completed))
-standardized_data <- scale(starbucks$income)
+starbucks$age <- scale(starbucks$age)
+starbucks$income <- scale(starbucks$income)
+starbucks$weeks_as_member <- scale(starbucks$weeks_as_member)
 
 ```
 
@@ -201,29 +203,24 @@ logistic_model2 <- glm(`offer completed`~ difficulty + offer_type +reward, data=
 summary(logistic_model2)
 
 #no pooling
-no_pool_model <- glm(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | difficulty),
+partial_pool_model <- glmer(formula = `offer completed` ~ age + income + gender + weeks_as_member + (1 | id),
                         family = binomial,
-                        data = starbucks)
-
+                        data = starbucks_train)
+summary(no_pool_model)
 try1 <- glm(`offer completed` ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
 hist(starbucks$income)
 
-starbucks$age <- scale(starbucks$age)
-starbucks$income <- scale(starbucks$income)
 ```
 
 ```{r}
-starbucsetes.factor(data$offer_completed)
-formula <- as.formula("`offer completed` ~ age + income + gender + weeks_as_member + difficulty + reward")                       
 
-# Create a data frame with the formula
-data_formula <- model.frame(formula, starbucks_train)
+starbucks_train$`offer completed` <- as.factor(starbucks_train$`offer completed`)
 
-# Perform undersampling using downSample
-undersampled_data <- downSample(data_formula, y = "`offer completed`")
+# Perform oversampling using ovun.sample
+balanced_starbucks <- ovun.sample(`offer completed` ~ age + gender + income + reward + difficulty + weeks_as_member + offer_type + channels, data = starbucks_train, method = "both", p = 0.5, N = 12000, seed = 1)$data
 
-# Check the class distribution after undersampling
-table(undersampled_data$`offer completed`)
+# Check the class distribution after oversampling
+table(balanced_starbucks$`offer completed`)
 
 ```
 
@@ -231,7 +228,7 @@ table(undersampled_data$`offer completed`)
 ```{r}
 #misclassification error
  
-predicted_probabilities <- predict(try1, newdata = starbucks_test, type = "response")
+predicted_probabilities <- predict(no_pool_model, newdata = starbucks_test, type = "response")
 predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
 
 # Assuming 'response_variable' is the actual binary response variable in your dataset
