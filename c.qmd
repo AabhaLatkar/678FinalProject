@@ -98,8 +98,8 @@ starbucks <- starbucks %>%
 starbucks$age <- scale(starbucks$age)
 starbucks$income <- scale(starbucks$income)
 starbucks$weeks_as_member <- scale(starbucks$weeks_as_member)
-factor(starbucks$`offer completed`)
-
+starbucks<- starbucks%>%
+  rename(completed = `offer completed`)
 ```
 
 ##EDA
@@ -181,61 +181,61 @@ set.seed(123)
 
 # Assuming 'data' is your dataset
 # 80% of the data will be used for training
-index <- createDataPartition(starbucks$`offer completed`, p = 0.8, list = FALSE)
+index <- createDataPartition(starbucks$completed, p = 0.8, list = FALSE)
 
 # Create training and test sets
 starbucks_train <- starbucks[index, ]
 starbucks_test  <- starbucks[-index, ]
 ```
 
+```{r}
+
+# Perform oversampling using ovun.sample
+#starbucks <- ovun.sample( completed ~ age + gender + income + reward + id+ difficulty + weeks_as_member + offer_type + channels,
+#                             data = starbucks, method = "both", N = 12000, seed =  #1)$data
+
+
+# Check the class distribution after oversampling
+#table(starbucks$completed)
+
+```
 
 ##Modelling!
 ```{r}
 #The null model
-null_model <- glm(`offer completed`~ 1, data= starbucks_train, family= "binomial")
+null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
 summary(null_model)
 
 #The normal model
-logistic_model <- glm(`offer completed`~ income+age+gender+weeks_as_member+difficulty+reward+offer_type, data= starbucks_train, family= "binomial")
-summary(logistic_model)
+try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
 
 #The normal model 2
-logistic_model2 <- glm(`offer completed`~ difficulty + offer_type +reward, data= starbucks_train, family= "binomial")
+logistic_model2 <- glm(completed~ difficulty + offer_type +reward, data= starbucks_train, family= "binomial")
 summary(logistic_model2)
 
-#no pooling
-starbucks_train$`offer completed` <- factor(starbucks_train$`offer completed`)
-
-partial_pool_model <- glmer(formula = `offer completed`~ age + income + gender + weeks_as_member + (1 | id),
+#partial_pooling1
+partial_pool_model <- glmer(formula = completed~ age + income + gender + weeks_as_member + (1 | id),
                         family = binomial,
                         data = starbucks_train)
-summary(no_pool_model)
-try1 <- glm(`offer completed` ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
-hist(starbucks$income)
+summary(partial_pool_model)
 
-```
+#partial_pooling2
+partial_pool_model2 <- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member + offer_type + difficulty +(1 | id),
+                        family = binomial,
+                        data = starbucks_train)
+summary(partial_pool_model)
 
-```{r}
-
-starbucks_train$`offer completed` <- as.factor(starbucks_train$`offer completed`)
-
-# Perform oversampling using ovun.sample
-balanced_starbucks <- ovun.sample(`offer completed` ~ age + gender + income + reward + difficulty + weeks_as_member + offer_type + channels, data = starbucks_train, method = "both", p = 0.5, N = 12000, seed = 1)$data
-
-# Check the class distribution after oversampling
-table(balanced_starbucks$`offer completed`)
-
+#complete pooling
+cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+id, data = starbucks_train, family = "binomial")
 ```
 
 
 ```{r}
 #misclassification error
  
-predicted_probabilities <- predict(no_pool_model, newdata = starbucks_test, type = "response")
+predicted_probabilities <- predict(cp, newdata = starbucks_test, type = "response")
 predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
-
-# Assuming 'response_variable' is the actual binary response variable in your dataset
-actual_classes <- starbucks_test$`offer completed`
+actual_classes <- starbucks_test$completed
 
 # Calculate misclassification error
 misclassification_error <- mean(predicted_classes != actual_classes)
