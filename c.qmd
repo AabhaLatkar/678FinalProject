@@ -13,7 +13,7 @@ Goal: The objective of this analysis is to build a logistic regression that pred
 
 First, we will clean the data and merge the 3 files together so that we have demographic information about a customer who accepted/ rejected an offer and the characteristics of the offer.
 
-The offers differ in "lucrativity" and popularity; offers fon't have the same rate of completion. Some offers are completed more than the other. There is variation by offers on the rate of completion. That is why, we will build a multilevel model where we will vary the intercept by the offers.
+
 
 We shall also see if the relationship between the predictors and outcome variable changes with the offers. If it does, we can do a varying slope model to capture that variation. we can see that only 26% of the offers in our random sample were completed. Sending the offers requires money and if we can predict beforehand if a customer will complete the offer, we can save money on advertising and take business decisions accordingly.
 
@@ -47,7 +47,7 @@ profile <- read_csv("profile.csv", show_col_types = FALSE)
 transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
 ```
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, results='hide'}
 #Get the data description and see if there are any missing values for each of the 3 dataset
 
 #profile
@@ -128,7 +128,7 @@ ggplot(data = melted_cormat, aes(Var1, Var2, fill = value)) +   geom_tile() +   
 
 ```
 
-#We can conclude some things from the correlation map: 1. Member year and weeks_as_member have a high negative correlation, so they cannot both be used. I am choosing to use weeks_as_member as one of my predictors as it is a continuous variable and
+We can conclude some things from the correlation map: 1. Member year and weeks_as_member have a high negative correlation, so they cannot both be used. I am choosing to use weeks_as_member as one of my predictors as it is a continuous variable. I will also be using duration instead of difficulty.
 
 
 
@@ -149,15 +149,17 @@ ggplot(proportion_data1, aes(x = as.factor(id), y = proportion,fill = proportion
        y = "Proportion of Offer Completion") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+The offers differ in popularity; some offers get completed more than the other. There is variation by offers on the rate of completion. That is why, we will build a multilevel model where we will vary the intercept by the offers.
 ```{r, echo=FALSE}
 starbucks$completed <- factor(starbucks$completed, levels = c(0, 1))
 ggplot(starbucks, aes(x = completed, y = income, fill = completed)) +
   geom_boxplot() +
-  labs(title = "Side-by-Side Box Plot",
+  labs(title = "Offer completed varying according to income",
        x = "Offer completed",
        y = "Income") +
   scale_fill_manual(values = c("darkgreen", "lightgreen"))
 ```
+We can see that there is some variation in the offers completed; customers with higher income tend to complete the offers more compared to those with lesser income.
 
 ```{r, echo=FALSE}
 ggplot(starbucks, aes(x = completed, y = age, fill = completed)) +
@@ -167,6 +169,7 @@ ggplot(starbucks, aes(x = completed, y = age, fill = completed)) +
        y = "Age") +
   scale_fill_manual(values = c("darkblue", "lightblue"))
 ```
+There is some variation in age as well. Older people tend to complete the offers more.
 
 ```{r, echo=FALSE}
 ggplot(starbucks, aes(x = completed, y = weeks_as_member, fill = completed)) +
@@ -176,6 +179,7 @@ ggplot(starbucks, aes(x = completed, y = weeks_as_member, fill = completed)) +
        y = "Weeks as Member") +
   scale_fill_manual(values = c("violet", "pink"))
 ```
+Customers who have been members of the starbucks rewards program for a longer period of time completed more offers in this 1 month period.
 
 ```{r, echo=FALSE}
 
@@ -190,6 +194,7 @@ ggplot(percentage_data, aes(x = factor(gender), y = percentage, fill = factor(co
   scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
   theme_minimal()
 ```
+The offer completed variable varies according to gender as well. Males have the least percentage of completing the offer followed by females, and other has the highest proportion.
 
 ```{r, echo=FALSE}
 percentage_data2 <- starbucks %>%
@@ -203,6 +208,7 @@ ggplot(percentage_data2, aes(x = factor(offer_type), y = percentage, fill = fact
   scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
   theme_minimal()
 ```
+Surprisingly, the probability of a customer completing the offer does not change much with the offer type. Discount offers have a slightly better chance of being completed as buy one get one free offers.
 
 ```{r, echo=FALSE}
 ggplot(starbucks, aes(x = factor(completed), y = weeks_as_member, fill = factor(completed))) +
@@ -212,8 +218,9 @@ ggplot(starbucks, aes(x = factor(completed), y = weeks_as_member, fill = factor(
        x = "completed", y = "Income") +
   theme_minimal()
 ```
+This plot shows the variation of the predictor "weeks_as_member" across all the offers. We can see that there is some variation. A varying slope model will be able to capture the variance seen.
 
-
+We shall split the data into training and testing. 80% of the data will be used to train the models which will be tested on the remaining 20%.
 ```{r, echo=FALSE}
 set.seed(123)
 # 80% of the data will be used for training
@@ -224,10 +231,11 @@ starbucks_train <- starbucks[index, ]
 starbucks_test  <- starbucks[-index, ]
 ```
 
+This dataset is very imbalanced with only lll instances of offers being completed and www of those not being completed. This makes it harder for the models to learn the instances where the offer is completed. We will under sample from the majority class and over-sample from the minority class to fix this issue. 
 ```{r, echo=FALSE}
 
 # Perform oversampling using ovun.sample
-starbucks <- ovun.sample(completed ~ age + gender + income + reward + id+ difficulty + weeks_as_member + offer_type + channels, data = starbucks_train, method = "both", N = 12000, seed =1)$data
+starbucks <- ovun.sample(completed ~ age + gender + income + reward + id+ difficulty + weeks_as_member + offer_type + channels, data = starbucks_train, method = "both", N = 112000, seed =1)$data
 
 
 # Check the class distribution after oversampling
@@ -235,19 +243,19 @@ table(starbucks$completed)
 
 ```
 ##Modelling!
-
-```{r}
+The null model
+```{r, results='hide'}
 #The null model
 null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
 summary(null_model)
 ```
-
+The null model predicts the majority class for every new observation
 ```{r}
 #The normal model
 try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
 summary(try1)
 ```
-
+The partial pooling model uses the different offers as groups to capture the variation of offers completed in them.
 ```{r}
 #partial_pooling1
 partial_pool_model <- glmer(formula = completed~ age + income + gender + weeks_as_member + (1 | id),
@@ -256,12 +264,7 @@ partial_pool_model <- glmer(formula = completed~ age + income + gender + weeks_a
 summary(partial_pool_model)
 
 ```
-
-```{r}
-try3 <- glm(completed ~ income, data = starbucks_train, family = "binomial")
-summary(try3)
-```
-
+We will try to vary the slope as well.
 ```{r}
 #partial_pooling2
 partial_pool_model2 <- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member + offer_type + difficulty +(1 | id),
@@ -270,20 +273,20 @@ partial_pool_model2 <- glmer(formula = completed~ income + age + gender + gender
 summary(partial_pool_model)
 
 ```
-
+We will try to vary the slope in this model.
 ```{r}
 #varying slope
 partial_pooling3<- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member  +(1+weeks_as_member| id),family = binomial, data = starbucks_train)
 partial_pooling3
 ```
-
+The complete pooling model
 ```{r}
 #complete pooling
 cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+id, data = starbucks_train, family = "binomial")
 summary(cp)
 #ask if you add group level predictors to complete pooling
 ```
-
+We will now get the misclassification errors of all of the models based on the test dataset. The misclassificatin error is calculated as the sum of the incorrectly predicted observations over the total observations.
 ```{r}
 model_list <- list(null_model, try1,partial_pool_model,partial_pool_model2, cp)
 ```
@@ -331,14 +334,14 @@ calculate_misclassification_errors(model_list, starbucks_test)
 try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
 null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
 
-predicted_probabilities <- predict(try3, newdata = starbucks_test, type = "response")
+predicted_probabilities <- predict(try1, newdata = starbucks_test, type = "response")
 predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
  actual_classes <- starbucks_test$completed
 conf_matrix <- confusionMatrix(factor(predicted_classes), factor(actual_classes))
 conf_matrix
 ```
-
-```{r}
+We will also get the confusion matrices.
+```{r, results='hide', echo=FALSE}
 # Assuming you have a list of models named model_list
 model_list <- list(try1, null_model, partial_pool_model, partial_pool_model2, cp)
 
