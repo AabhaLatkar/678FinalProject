@@ -6,17 +6,29 @@ editor: visual
 ---
 
 ## Starbucks! Introduction to the Dataset
-# we can see that only 26% of the offers in our random sample were completed. Sending the offers requires money and if we can predict beforehand if a customer will complete the offer, we can save money on advertising and take business decisions accordingly.
+
+This dataset was released by Starbucks and is a simulation of actual events recorded on the Starbucks app. It has 3 files- 1. profile: Has information about the customer profiles including demographic information like their age, income, gender and when they became a Starbucks rewards member. 2. portfolio: Has information about the offers that were sent to customers. There are 10 offers which can either be BOGO- buy one get one free, discount and informational. The offers also have different difficulty levels, rewards and channels through which they are distributed. 3. transcript: This is the data about the events recorded on the app. There is information about customers receiving, viewing and completing offers. It also has data about the transactions that took place.
+
+Goal: The objective of this analysis is to build a logistic regression that predicts if a customer will complete an offer that was sent out.
+
+First, we will clean the data and merge the 3 files together so that we have demographic information about a customer who accepted/ rejected an offer and the characteristics of the offer.
+
+The offers differ in "lucrativity" and popularity; offers fon't have the same rate of completion. Some offers are completed more than the other. There is variation by offers on the rate of completion. That is why, we will build a multilevel model where we will vary the intercept by the offers.
+
+We shall also see if the relationship between the predictors and outcome variable changes with the offers. If it does, we can do a varying slope model to capture that variation. we can see that only 26% of the offers in our random sample were completed. Sending the offers requires money and if we can predict beforehand if a customer will complete the offer, we can save money on advertising and take business decisions accordingly.
 
 Starbucks <https://quarto.org>.
 
 ## Objectives and Methods
 
-When you click the **Render** 
+When you click the **Render**
+
+#the chi-square/box plots for y and correlation #more samples #confusion matrix #check the code of misclassi #no pooling #literature review
 
 ## Data Wrangling
 
-```{r}
+```{r, echo=FALSE, results='hide'}
+
 #First we will load the data and the libraries
 library(tidyr)
 library(readr)
@@ -35,7 +47,7 @@ profile <- read_csv("profile.csv", show_col_types = FALSE)
 transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
 ```
 
-```{r}
+```{r, echo=FALSE}
 #Get the data description and see if there are any missing values for each of the 3 dataset
 
 #profile
@@ -84,7 +96,6 @@ starbucks$member_year <- year(starbucks$became_member_on)
 starbucks <- starbucks %>% select(-became_member_on)
 starbucks$`offer completed` <- gsub("NULL", "0", starbucks$`offer completed`)
 starbucks<- starbucks[starbucks$`offer completed` %in% c(0, 1), ]
-starbucks$`offer completed` <- as.numeric(starbucks$`offer completed`)
 starbucks <- starbucks %>%
                     group_by(person) %>%
                     sample_n(size = 1) %>%
@@ -104,7 +115,8 @@ starbucks<- starbucks%>%
 ```
 
 ##EDA
-```{r}
+
+```{r, echo=FALSE}
 #correlation analysis
 numeric_columns <- sapply(starbucks, is.numeric)
 numeric_starbucks <- starbucks[, numeric_columns]
@@ -114,73 +126,96 @@ melted_cormat <- melt(cormat)
 
 ggplot(data = melted_cormat, aes(Var1, Var2, fill = value)) +   geom_tile() +   geom_text(aes(label = round(value, 2)), color = "black") +     scale_fill_gradient(low = "blue", high = "red") +   labs(title = "College Correlation Heatmap", x = "Variables", y = "Variables") +   theme(axis.text.x = element_text(angle = 45, hjust = 1))  
 
-#seeing how the offers completed vary across offer types
+```
 
-starbucks <- na.omit(starbucks)
+#We can conclude some things from the correlation map: 1. Member year and weeks_as_member have a high negative correlation, so they cannot both be used. I am choosing to use weeks_as_member as one of my predictors as it is a continuous variable and
+
+
+
+```{r, echo=FALSE}
+# Group by ID and summarize completion counts
 proportion_data <- starbucks %>%
   group_by(id) %>%
-  summarise(count = sum(completed))
-proportion_data1 <- proportion_data %>%mutate(proportion= count/sum(count))
+  summarise(count = sum(completed == 1))
 
-ggplot(proportion_data1, aes(x = as.factor(id), y = proportion))+
-  geom_bar(stat="identity") +
-  labs(title = "Proportion of Offer Completion by ID", x = "ID", y = "Proportion of Offer Completion") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-#How many offer completed?
-ggplot(starbucks)+
-geom_bar()+
-aes(x=`offer completed`)
-
-#Seeing how the offers completed varies across people.
-proportion_data2 <- starbucks %>%
-  group_by(person) %>%   
-  summarise(count = sum(`offer completed` == 1))
-proportion_data3 <- proportion_data2 %>%
+# Calculate proportions
+proportion_data1 <- proportion_data %>% 
   mutate(proportion = count / sum(count))
+# Create bar plot for the factor variable `completed`
+ggplot(proportion_data1, aes(x = as.factor(id), y = proportion,fill = proportion)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Proportion of Offer Completion by ID",
+       x = "ID",
+       y = "Proportion of Offer Completion") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r, echo=FALSE}
+starbucks$completed <- factor(starbucks$completed, levels = c(0, 1))
+ggplot(starbucks, aes(x = completed, y = income, fill = completed)) +
+  geom_boxplot() +
+  labs(title = "Side-by-Side Box Plot",
+       x = "Offer completed",
+       y = "Income") +
+  scale_fill_manual(values = c("darkgreen", "lightgreen"))
+```
 
-hist(proportion_data3$count)
+```{r, echo=FALSE}
+ggplot(starbucks, aes(x = completed, y = age, fill = completed)) +
+  geom_boxplot() +
+  labs(title = "Side-by-Side Box Plot",
+       x = "Binary Variable",
+       y = "Age") +
+  scale_fill_manual(values = c("darkblue", "lightblue"))
+```
 
-starbucks%>%
-summarise(completed =mean(`offer completed`))
-starbucks%>%
-group_by(gender)%>%
-summarise(completed1=mean(
-`offer completed`))
-ggplot(starbucks)+
-geom_bar()+
-aes(x=`offer completed`)
+```{r, echo=FALSE}
+ggplot(starbucks, aes(x = completed, y = weeks_as_member, fill = completed)) +
+  geom_boxplot() +
+  labs(title = "Side-by-Side Box Plot",
+       x = "offer completed",
+       y = "Weeks as Member") +
+  scale_fill_manual(values = c("violet", "pink"))
+```
 
-ggplot(starbucks %>% filter(gender == "gender")) +
-  geom_bar(aes(x = `offer completed`))
-
-ggplot(starbucks, aes(x = gender, fill = `offer completed`)) +
-  geom_bar() +
-  labs(x = "Offer Completed", y = "Count") +
-  scale_fill_manual(values = c("0" = "red", "1" = "pink")) +
-  theme_minimal()
-
-ggplot(starbucks, aes(x = factor(gender), fill = factor(`offer completed`))) +
-  geom_bar(position = "stack") +
-  labs(x = "Gender", y = "Count") +
-  scale_fill_manual(values = c("0" = "red", "1" = "green")) +
-  theme_minimal()
+```{r, echo=FALSE}
 
 percentage_data <- starbucks %>%
-  group_by(gender, `offer completed`) %>%
+  group_by(gender, completed) %>%
   summarise(count = n()) %>%
   mutate(percentage = count / sum(count) * 100)
 
-ggplot(percentage_data, aes(x = factor(gender), y = percentage, fill = factor(`offer completed`))) +
+ggplot(percentage_data, aes(x = factor(gender), y = percentage, fill = factor(completed))) +
   geom_bar(stat = "identity", position = "fill") +
   labs(x = "Gender", y = "Percentage") +
   scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
   theme_minimal()
 ```
 
-```{r}
-set.seed(123)
+```{r, echo=FALSE}
+percentage_data2 <- starbucks %>%
+  group_by(offer_type, completed) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
 
-# Assuming 'data' is your dataset
+ggplot(percentage_data2, aes(x = factor(offer_type), y = percentage, fill = factor(completed))) +
+  geom_bar(stat = "identity", position = "fill") +
+  labs(x = "Offer_type", y = "Percentage") +
+  scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
+  theme_minimal()
+```
+
+```{r, echo=FALSE}
+ggplot(starbucks, aes(x = factor(completed), y = weeks_as_member, fill = factor(completed))) +
+  geom_violin(scale = "width", trim = FALSE) +
+  facet_wrap(~id, scales = "free_y") +
+  labs(title = "Weeks_as_member by 'offer completed'",
+       x = "completed", y = "Income") +
+  theme_minimal()
+```
+
+
+```{r, echo=FALSE}
+set.seed(123)
 # 80% of the data will be used for training
 index <- createDataPartition(starbucks$completed, p = 0.8, list = FALSE)
 
@@ -189,88 +224,71 @@ starbucks_train <- starbucks[index, ]
 starbucks_test  <- starbucks[-index, ]
 ```
 
-```{r}
+```{r, echo=FALSE}
 
 # Perform oversampling using ovun.sample
-#starbucks <- ovun.sample( completed ~ age + gender + income + reward + id+ difficulty + weeks_as_member + offer_type + channels,
-#                             data = starbucks, method = "both", N = 12000, seed =  #1)$data
+starbucks <- ovun.sample(completed ~ age + gender + income + reward + id+ difficulty + weeks_as_member + offer_type + channels, data = starbucks_train, method = "both", N = 12000, seed =1)$data
 
 
 # Check the class distribution after oversampling
-#table(starbucks$completed)
+table(starbucks$completed)
 
 ```
-
 ##Modelling!
+
 ```{r}
 #The null model
 null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
 summary(null_model)
+```
 
+```{r}
 #The normal model
 try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
+summary(try1)
+```
 
-#The normal model 2
-logistic_model2 <- glm(completed~ difficulty + offer_type +reward, data= starbucks_train, family= "binomial")
-summary(logistic_model2)
-
+```{r}
 #partial_pooling1
 partial_pool_model <- glmer(formula = completed~ age + income + gender + weeks_as_member + (1 | id),
                         family = binomial,
                         data = starbucks_train)
 summary(partial_pool_model)
 
+```
+
+```{r}
+try3 <- glm(completed ~ income, data = starbucks_train, family = "binomial")
+summary(try3)
+```
+
+```{r}
 #partial_pooling2
 partial_pool_model2 <- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member + offer_type + difficulty +(1 | id),
                         family = binomial,
                         data = starbucks_train)
 summary(partial_pool_model)
 
+```
+
+```{r}
+#varying slope
+partial_pooling3<- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member  +(1+weeks_as_member| id),family = binomial, data = starbucks_train)
+partial_pooling3
+```
+
+```{r}
 #complete pooling
 cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+id, data = starbucks_train, family = "binomial")
-
-#no pooling
-fit_mixed_model <- function(starbucks_train, formula) {
-  # Group the data by ID
-  grouped_data <- split(starbucks_train, starbucks_train$id)
-  
-  # Fit a mixed-effects model for each group
-  models <- lapply(grouped_data, function(group) {
-    lmer(formula, data = group)
-  })
-  
-  return(models)
-}
-fit_mixed_model(starbucks_train, formula)
-# Example usage:
-# Assuming 'starbucks_data' is your dataset and 'completed' is the binary outcome variable
-# You can modify the formula based on your specific predictors
-formula <- completed ~ income + age + gender + (1 | id)
-models_by_id <- fit_mixed_model(starbucks_train, formula)
-id_counts <- table(starbucks_train$id)
-
-```
-
-
-```{r}
-#misclassification error
- 
-predicted_probabilities <- predict(cp, newdata = starbucks_test, type = "response")
-predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
-actual_classes <- starbucks_test$completed
-
-# Calculate misclassification error
-misclassification_error <- mean(predicted_classes != actual_classes)
-
-print(paste("Misclassification Error:", misclassification_error))
-
-```
-```{r}
-model_list <- list(null_model, try1)
+summary(cp)
+#ask if you add group level predictors to complete pooling
 ```
 
 ```{r}
-library(tibble)
+model_list <- list(null_model, try1,partial_pool_model,partial_pool_model2, cp)
+```
+
+```{r, , echo=FALSE}
 
 calculate_misclassification_errors <- function(model_list, starbucks_test) {
   # Initialize an empty list to store results
@@ -305,11 +323,50 @@ calculate_misclassification_errors <- function(model_list, starbucks_test) {
 
   return(result_table)
 }
+calculate_misclassification_errors(model_list, starbucks_test)
 
 ```
 
+```{r}
+try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
+null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
 
+predicted_probabilities <- predict(try3, newdata = starbucks_test, type = "response")
+predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+ actual_classes <- starbucks_test$completed
+conf_matrix <- confusionMatrix(factor(predicted_classes), factor(actual_classes))
+conf_matrix
+```
 
+```{r}
+# Assuming you have a list of models named model_list
+model_list <- list(try1, null_model, partial_pool_model, partial_pool_model2, cp)
 
+# Create an empty list to store confusion matrices
+confusion_matrices <- list()
 
-The `echo: false` option disables the printing of code (only output is displayed).
+# Loop through each model in the list
+for (model in model_list) {
+  # Make predictions using the current model
+  predicted_probabilities <- predict(model, newdata = starbucks_test, type = "response")
+  predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+  
+  # Get actual classes from the test data
+  actual_classes <- starbucks_test$completed
+  
+  # Create confusion matrix
+  conf_matrix <- confusionMatrix(factor(predicted_classes), factor(actual_classes))
+  
+  # Append the confusion matrix to the list
+  confusion_matrices <- c(confusion_matrices, list(conf_matrix))
+}
+
+# Print the confusion matrices
+for (i in seq_along(model_list)) {
+  cat("Confusion Matrix for Model", i, ":\n")
+  print(confusion_matrices[[i]])
+  cat("\n")
+}
+
+```
+
