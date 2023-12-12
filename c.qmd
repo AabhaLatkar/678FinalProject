@@ -27,7 +27,7 @@ When you click the **Render**
 
 ## Data Wrangling
 
-```{r, echo=FALSE, results='hide'}
+```{r, echo=FALSE, message=FALSE}
 
 #First we will load the data and the libraries
 library(tidyr)
@@ -223,234 +223,21 @@ ggplot(starbucks, aes(x = factor(completed), y = weeks_as_member, fill = factor(
 This plot shows the variation of the predictor "weeks_as_member" across all the offers. We can see that there is some variation. A varying slope model will be able to capture the variance seen.
 
 We shall split the data into training and testing. 80% of the data will be used to train the models which will be tested on the remaining 20%.
-```{r, echo=FALSE}
-set.seed(123)
-# 80% of the data will be used for training
-index <- createDataPartition(starbucks$completed, p = 0.8, list = FALSE)
 
-# Create training and test sets
-starbucks_train <- starbucks[index, ]
-starbucks_test  <- starbucks[-index, ]
-```
 
 This dataset is very imbalanced with only lll instances of offers being completed and www of those not being completed. This makes it harder for the models to learn the instances where the offer is completed. We will under sample from the majority class and over-sample from the minority class to fix this issue. 
-```{r, echo=FALSE}
-
-# Perform oversampling using ovun.sample
-starbucks <- ovun.sample(completed ~ age + gender + income + reward + id+ difficulty + weeks_as_member + offer_type + channels, data = starbucks, method = "both", N = 12000, seed =1)$data
 
 
-# Check the class distribution after oversampling
-table(starbucks$completed)
-starbucks$completed <- as.numeric(as.character(starbucks$completed))
-
-```
-##Modelling!
-The null model
-```{r, results='hide'}
-#The null model
-null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
-summary(null_model)
-```
 The null model predicts the majority class for every new observation
-```{r}
-#The normal model
-try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
-summary(try1)
-```
+
 The partial pooling model uses the different offers as groups to capture the variation of offers completed in them.
-```{r}
-#partial_pooling1
-partial_pool_model <- glmer(formula = completed~ age + income + gender + weeks_as_member + (1 | id),
-                        family = binomial,
-                        data = starbucks_train)
-summary(partial_pool_model)
 
-```
 We will try to vary the slope as well.
-```{r}
-#partial_pooling2
-partial_pool_model2 <- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member + offer_type + difficulty +(1 | id),
-                        family = binomial,
-                        data = starbucks_train)
-summary(partial_pool_model)
 
-```
 We will try to vary the slope in this model.
-```{r}
-#varying slope
-partial_pooling3<- glmer(formula = completed~ income + age + gender + gender:income + gender:age + weeks_as_member  +(1+weeks_as_member| id),family = binomial, data = starbucks_train)
-partial_pooling3
-```
+
 The complete pooling model
-```{r}
-#complete pooling
-cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+id, data = starbucks_train, family = "binomial")
-summary(cp)
-#ask if you add group level predictors to complete pooling
-```
-```{r}
-```
 
-
-```{r}
-```
-
-We will now get the misclassification errors of all of the models based on the test dataset. The misclassificatin error is calculated as the sum of the incorrectly predicted observations over the total observations.
-```{r}
-model_list <- list(null_model, try1, cp, partial_pool_model)
-```
-
-```{r, , echo=FALSE}
-
-calculate_misclassification_errors <- function(model_list, starbucks_test) {
-  # Initialize an empty list to store results
-  results <- list()
-
-  # Loop through each model
-  for (i in seq_along(model_list)) {
-    # Get the model
-    model <- model_list[[i]]
-
-    # Get the model name
-    model_name <- names(model_list)[i]
-
-    # Predict probabilities
-    predicted_probabilities <- predict(model, newdata = starbucks_test, type = "response")
-
-    # Convert probabilities to binary classes
-    predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
-
-    # Get actual classes from test data
-    actual_classes <- starbucks_test$completed
-
-    # Calculate misclassification error
-    misclassification_error <- mean(predicted_classes != actual_classes)
-
-    # Store results in a list
-    results[[i]] <- tibble(Model = model_name, Misclassification_Error = misclassification_error)
-  }
-
-  # Combine results into a single data frame
-  result_table <- do.call(rbind, results)
-
-  return(result_table)
-}
-calculate_misclassification_errors(model_list, starbucks_test)
-
-```
-
-```{r}
-try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member+ difficulty+reward, data = starbucks_train, family = "binomial")
-null_model <- glm(completed~ 1, data= starbucks_train, family= "binomial")
-
-predicted_probabilities <- predict(try1, newdata = starbucks_test, type = "response")
-predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
- actual_classes <- starbucks_test$completed
-conf_matrix <- confusionMatrix(factor(predicted_classes), factor(actual_classes))
-conf_matrix
-```
-```{r}
-
-```
-
-We will also get the confusion matrices.
-```{r, results='hide', echo=FALSE}
-# Assuming you have a list of models named model_list
-model_list <- list(try1, null_model, partial_pool_model, partial_pool_model2, cp)
-
-# Create an empty list to store confusion matrices
-confusion_matrices <- list()
-
-# Loop through each model in the list
-for (model in model_list) {
-  # Make predictions using the current model
-  predicted_probabilities <- predict(model, newdata = starbucks_test, type = "response")
-  predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
-  
-  # Get actual classes from the test data
-  actual_classes <- starbucks_test$completed
-  
-  # Create confusion matrix
-  conf_matrix <- confusionMatrix(factor(predicted_classes), factor(actual_classes))
-  
-  # Append the confusion matrix to the list
-  confusion_matrices <- c(confusion_matrices, list(conf_matrix))
-}
-
-# Print the confusion matrices
-for (i in seq_along(model_list)) {
-  cat("Confusion Matrix for Model", i, ":\n")
-  print(confusion_matrices[[i]])
-  cat("\n")
-}
-
-```
-```{r}
-num_samples <- 5
-
-# Generate five different random samples
-random_samples <- replicate(num_samples, {
-  starbucks %>%
-    group_by(person) %>%
-    sample_n(size = 1) %>%
-    ungroup()
-}, simplify = FALSE)
-```
-
-```{r}
-
-# Function to perform modeling and calculate misclassification errors
-model_and_evaluate <- function(sample) {
-   sample <- ovun.sample(completed ~ age + gender + income + reward + id + difficulty + weeks_as_member + offer_type + channels,
-                        data = sample, method = "both", N = 12000, seed = 1)$data
-  sample$completed <- as.numeric(as.character(sample$completed))
-  # Create training and test sets
-  index <- createDataPartition(sample$completed, p = 0.8, list = FALSE)
-  sample_train <- sample[index, ]
-  sample_test <- sample[-index, ]
- 
-
-  # Modelling
-  null_model <- glm(completed ~ 1, data = sample_train, family = "binomial")
-  try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + difficulty + reward,
-              data = sample_train, family = "binomial")
-  partial_pool_model <- glmer(formula = completed ~ age + income + gender + weeks_as_member + (1 | id),
-                              family = binomial, data = sample_train)
-  partial_pool_model2 <- glmer(formula = completed ~ income + age + gender + gender:income + gender:age + weeks_as_member +
-                                     offer_type + difficulty + (1 | id),
-                               family = binomial, data = sample_train)
-  partial_pooling3 <- glmer(formula = completed ~ income + age + gender + gender:income + gender:age + weeks_as_member +
-                                (1 + weeks_as_member | id),
-                            family = binomial, data = sample_train)
-  cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + id,
-            data = sample_train, family = "binomial")
-
-  model_list <- list(null_model, try1, cp, partial_pool_model, partial_pool_model2, partial_pooling3)
-
-  # Calculate misclassification errors
-  errors <- calculate_misclassification_errors(model_list, sample_test)
-
-  return(errors)
-}
-
-# Generate five different random samples
-set.seed(123)
-num_samples <- 5
-random_samples <- replicate(num_samples, {
-  starbucks %>%
-    group_by(person) %>%
-    sample_n(size = 1) %>%
-    ungroup()
-}, simplify = FALSE)
-
-# Apply the function to each random sample
-results <- lapply(random_samples, model_and_evaluate)
-
-# Combine results into a single data frame
-results_df <- do.call(rbind, results)
-
-```
 ```{r}
 calculate_misclassification_errors <- function(model, test_data) {
   # Predict probabilities
@@ -502,9 +289,9 @@ for (sample_num in 1:5) {
   null_model <- glm(completed ~ 1, data = starbucks_train, family = "binomial")
   summary(null_model)
 
-  # The normal model
-  try1 <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + difficulty + reward, data = starbucks_train, family = "binomial")
-  summary(try1)
+  # The logistic model
+  logistic_model <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + difficulty + reward, data = starbucks_train, family = "binomial")
+  summary(logistic_model)
 
   # Partial pooling model
   partial_pool_model <- glmer(formula = completed ~ age + income + gender + weeks_as_member + (1 | id),
@@ -512,24 +299,28 @@ for (sample_num in 1:5) {
                               data = starbucks_train)
   summary(partial_pool_model)
 
-  # Partial pooling model with varying slope
+  # Partial pooling model with group level predictors
   partial_pool_model2 <- glmer(formula = completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + offer_type + difficulty + (1 | id),
                                family = binomial,
                                data = starbucks_train)
   summary(partial_pool_model2)
 
   # Varying slope model
-  partial_pooling3 <- glmer(formula = completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + (1 + weeks_as_member | id),
+  varying_slope_model <- glmer(formula = completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + (1 + weeks_as_member | id),
                             family = binomial,
                             data = starbucks_train)
-  summary(partial_pooling3)
+  summary(varying_slope_model)
 
   # Complete pooling model
-  cp <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + id, data = starbucks_train, family = "binomial")
-  summary(cp)
+  complete_pooling_model <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + id, data = starbucks_train, family = "binomial")
+  summary(complete_pooling_model)
+  
+  #no pooling model
+  no_pooling_model <- glm(completed ~ income + age + gender + gender:income + gender:age + weeks_as_member + factor(id), data = starbucks_train, family = "binomial")
+
 
   # Store models in a list
-  model_list <- list(null_model, try1, partial_pool_model, partial_pool_model2, partial_pooling3, cp)
+  model_list <- list(null_model, logistic_model, partial_pool_model, partial_pool_model2, varying_slope_model, complete_pooling_model, no_pooling_model)
 
   # Evaluate models and print misclassification errors
   errors <- lapply(model_list, function(model) {
