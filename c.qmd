@@ -7,25 +7,29 @@ editor: visual
 
 ## Starbucks! Introduction to the Dataset
 
-This dataset was released by Starbucks and is a simulation of actual events recorded on the Starbucks app. It has 3 files- 1. profile: Has information about the customer profiles including demographic information like their age, income, gender and when they became a Starbucks rewards member. 2. portfolio: Has information about the offers that were sent to customers. There are 10 offers which can either be BOGO- buy one get one free, discount and informational. The offers also have different difficulty levels, rewards and channels through which they are distributed. 3. transcript: This is the data about the events recorded on the app. There is information about customers receiving, viewing and completing offers. It also has data about the transactions that took place.
+This dataset was released by Starbucks and is a simulation of actual events recorded on the Starbucks app. It has 3 files-
 
-Goal: The objective of this analysis is to build a logistic regression that predicts if a customer will complete an offer that was sent out.
+1.  **profile:** Has information about the customer profiles including demographic information like their age, income, gender and when they became a Starbucks rewards member.
 
-First, we will clean the data and merge the 3 files together so that we have demographic information about a customer who accepted/ rejected an offer and the characteristics of the offer.
+2.  **portfolio:** Has information about the offers that were sent to customers. There are 10 offers which can either be BOGO- buy one get one free, discount and informational. The offers also have different difficulty levels, rewards and channels through which they are distributed.
 
+3.  **transcript:** This is the data about the events recorded on the app. There is information about customers receiving, viewing and completing offers. It also has data about the transactions that took place.
 
+## Objective and Methodology
 
-We shall also see if the relationship between the predictors and outcome variable changes with the offers. If it does, we can do a varying slope model to capture that variation. we can see that only 26% of the offers in our random sample were completed. Sending the offers requires money and if we can predict beforehand if a customer will complete the offer, we can save money on advertising and take business decisions accordingly.
+**Goal:** The objective of this analysis is to build a logistic regression that predicts if a customer will complete an offer that was sent out. I will be using a multilevel regression for this analysis; the different offer types will be used as groups and the customer demographics and offer characteristics will be used as predictors.
 
-Starbucks <https://quarto.org>.
+As there are repeated observations for each person, I took 5 random samples from the data, such as each sample has only one observations for each person. The dataset was also imbalanced as the number of offers completed was only 20% of the whole data. This makes it difficult for the models to learn to predict the minority class. To fix this issue, I under sampled from the majority class and undersampled from the minority class. To test the models, I divided the data into training(80%) and testing(20%) data sets. I then tested the models on the test dataset and got the misclassification error. The misclassification error is calculated using the formula:
 
-## Objectives and Methods
+\[ \text{Misclassification Error} = \frac{\text{Number of Misclassified Instances}}{\text{Total Number of Instances}} \]
 
-When you click the **Render**
-
-#the chi-square/box plots for y and correlation #more samples #confusion matrix #check the code of misclassi #no pooling #literature review
+where the "Number of Misclassified Instances" is the sum of instances where the predicted class is not equal to the actual class, and the "Total Number of Instances" is the overall count of instances in the dataset.
 
 ## Data Wrangling
+
+First, I cleaned the data and merged the 3 files together so that we have demographic information about a customer who accepted/ rejected an offer and the characteristics of the offer and cleaned the data to bring it into the desired format.
+
+
 
 ```{r, echo=FALSE, message=FALSE}
 
@@ -47,7 +51,7 @@ profile <- read_csv("profile.csv", show_col_types = FALSE)
 transcript <- read_csv("transcript2.csv", show_col_types = FALSE)
 ```
 
-```{r, echo=FALSE, results='hide'}
+```{r, results='hide'}
 #Get the data description and see if there are any missing values for each of the 3 dataset
 
 #profile
@@ -117,7 +121,7 @@ starbucks<- starbucks%>%
 
 ##EDA
 
-```{r, echo=FALSE}
+```{r}
 #correlation analysis
 numeric_columns <- sapply(starbucks, is.numeric)
 numeric_starbucks <- starbucks[, numeric_columns]
@@ -129,11 +133,9 @@ ggplot(data = melted_cormat, aes(Var1, Var2, fill = value)) +   geom_tile() +   
 
 ```
 
-We can conclude some things from the correlation map: 1. Member year and weeks_as_member have a high negative correlation, so they cannot both be used. I am choosing to use weeks_as_member as one of my predictors as it is a continuous variable. I will also be using duration instead of difficulty.
+We can conclude some things from the correlation map. Member year and weeks_as_member have a high negative correlation, so they cannot both be used. I am choosing to use weeks_as_member as one of my predictors as it is a continuous variable. I will also be using duration instead of difficulty.
 
-
-
-```{r, echo=FALSE}
+```{r}
 # Group by ID and summarize completion counts
 proportion_data <- starbucks %>%
   group_by(id) %>%
@@ -150,8 +152,10 @@ ggplot(proportion_data1, aes(x = as.factor(id), y = proportion,fill = proportion
        y = "Proportion of Offer Completion") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-The offers differ in popularity; some offers get completed more than the other. There is variation by offers on the rate of completion. That is why, we will build a multilevel model where we will vary the intercept by the offers.
-```{r, echo=FALSE}
+
+The offers differ in popularity; some offers get completed more than the other. There is variation by offers on the rate of completion. That is why, we will build a multilevel model where we will vary the intercept by the offers.We shall also see if the relationship between the predictors and outcome variable changes with the offers. If it does, we can do a varying slope model to capture that variation.
+
+```{r}
 starbucks$completed <- factor(starbucks$completed, levels = c(0, 1))
 ggplot(starbucks, aes(x = completed, y = income, fill = completed)) +
   geom_boxplot() +
@@ -160,6 +164,7 @@ ggplot(starbucks, aes(x = completed, y = income, fill = completed)) +
        y = "Income") +
   scale_fill_manual(values = c("darkgreen", "lightgreen"))
 ```
+
 We can see that there is some variation in the offers completed; customers with higher income tend to complete the offers more compared to those with lesser income.
 
 ```{r, echo=FALSE}
@@ -170,6 +175,7 @@ ggplot(starbucks, aes(x = completed, y = age, fill = completed)) +
        y = "Age") +
   scale_fill_manual(values = c("darkblue", "lightblue"))
 ```
+
 There is some variation in age as well. Older people tend to complete the offers more.
 
 ```{r, echo=FALSE}
@@ -180,6 +186,7 @@ ggplot(starbucks, aes(x = completed, y = weeks_as_member, fill = completed)) +
        y = "Weeks as Member") +
   scale_fill_manual(values = c("violet", "pink"))
 ```
+
 Customers who have been members of the starbucks rewards program for a longer period of time completed more offers in this 1 month period.
 
 ```{r, echo=FALSE}
@@ -195,6 +202,7 @@ ggplot(percentage_data, aes(x = factor(gender), y = percentage, fill = factor(co
   scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
   theme_minimal()
 ```
+
 The offer completed variable varies according to gender as well. Males have the least percentage of completing the offer followed by females, and other has the highest proportion.
 
 ```{r, echo=FALSE}
@@ -209,6 +217,7 @@ ggplot(percentage_data2, aes(x = factor(offer_type), y = percentage, fill = fact
   scale_fill_manual(values = c("0" = "darkblue", "1" = "lightblue")) +
   theme_minimal()
 ```
+
 Surprisingly, the probability of a customer completing the offer does not change much with the offer type. Discount offers have a slightly better chance of being completed as buy one get one free offers.
 
 ```{r, echo=FALSE}
@@ -224,19 +233,23 @@ This plot shows the variation of the predictor "weeks_as_member" across all the 
 
 We shall split the data into training and testing. 80% of the data will be used to train the models which will be tested on the remaining 20%.
 
+This is the list of the models I built.
 
-This dataset is very imbalanced with only lll instances of offers being completed and www of those not being completed. This makes it harder for the models to learn the instances where the offer is completed. We will under sample from the majority class and over-sample from the minority class to fix this issue. 
+1. null_model: The null model predicts the majority class for every new observation.
 
+2. logistic_model: This is a simple logistic model that predicts based on the customer demographics and captures their interactions between them.
 
-The null model predicts the majority class for every new observation
+3. partial_pool_model: The partial pooling model uses the different offers as groups to capture the variation of offers completed in them.
 
-The partial pooling model uses the different offers as groups to capture the variation of offers completed in them.
+4. partial_pool_model2: This model is a partial pool model, but also includes group level predictors.
 
-We will try to vary the slope as well.
+5. varying_slope_model: This model used the predictor "weeks_as_member" as the random effect across offer groups.
 
-We will try to vary the slope in this model.
+6. complete pooling: This model completely pools all the offer groups together.
 
-The complete pooling model
+7. no_pooling_model: This technique builds a separate model for all offer groups to capture the variance inside the group.
+
+I have used a function that makes 5 random samples from the data, builds models for each of them and calculates the misclassication error.
 
 ```{r}
 calculate_misclassification_errors <- function(model, test_data) {
@@ -334,6 +347,7 @@ for (sample_num in 1:5) {
 }
 ```
 
+The normal logistic model and the partial pooling model gives the best results most of the time.
 
-
-
+My results align with the work already done on this dataset. 
+There are no research papers on this datasets, but there is an article and a github repo. The machine learning methods used by the article generate better results, but I can put that into future work.
